@@ -1,28 +1,47 @@
 name: Update Configs
-permissions: write-all
+permissions: write-all  # 赋予足够的写入权限
 
 on:
   push:
-    branches: [main]
+    branches: [main]    # 代码推送到main分支时触发
   schedule:
-    - cron: "*/30 * * * *"
+    - cron: "*/30 * * * *"  # 每30分钟定时触发
+  workflow_dispatch:       # 关键：添加手动触发规则（解决无法手动运行的核心）
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - name: 检出代码（拉取完整历史）
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0  # 避免因历史过浅导致提交失败
+
+      - name: 配置Python环境
+        uses: actions/setup-python@v6
         with:
           python-version: '3.x'
-      - run: cd Files && pip install -r requirements.txt
-      - run: cd Files && python app.py
-      - run: cd Files && python sort.py
-      - uses: EndBug/add-and-commit@v9
+          cache: 'pip'    # 缓存依赖，加速运行
+
+      - name: 安装依赖（容错处理）
+        run: |
+          cd Files || { echo "❌ Files目录不存在"; exit 1; }
+          pip install -r requirements.txt || { echo "⚠️ requirements.txt不存在，跳过依赖安装"; }
+
+      - name: 执行核心脚本
+        run: |
+          cd Files
+          python app.py || { echo "❌ app.py执行失败"; exit 1; }
+          python sort.py || { echo "❌ sort.py执行失败"; exit 1; }
+
+      - name: 提交并推送变更
+        uses: EndBug/add-and-commit@v9
         with:
           author_name: T3stAcc
+          author_email: "github-actions[bot]@users.noreply.github.com"  # 补充邮箱，避免Git警告
           message: Updated!
           add: .
           push: true
+          pull: "--rebase"  # 拉取最新代码，避免冲突
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
